@@ -1,0 +1,12 @@
+Gem::Specification.new do |s|
+  s.name        = 'swiftDeadCode'
+  s.version     = '0.0.0'
+  s.date        = '2017-02-12'
+  s.summary     = "SwiftDeadCode!"
+  s.description = "Swift dead code checker"
+  s.authors     = ["Paweł Kowalczuk"]
+  s.email       = 'pwl.kowalczuk@gmail.com'
+  s.files       = ["lib/swiftDeadCode.rb"]
+  s.homepage    = 'https://riamf.github.io/'
+  s.license       = 'MIT'
+end

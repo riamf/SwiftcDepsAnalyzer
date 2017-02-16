@@ -5,7 +5,7 @@ require 'set'
 module SwiftDeadCode
 
     class SwiftDepsModel
-        attr_accessor :fileName, :provides, :nominals, :depends, :realDeps, :files
+        attr_accessor :fileName, :provides, :nominals, :depends, :realDeps, :files, :filePath, :params
 
         def initialize(depsYaml,fileName)
             
@@ -15,6 +15,7 @@ module SwiftDeadCode
             self.depends = depsYaml['depends-top-level'] || []
             self.files = Set.new
             self.realDeps = []
+            self.params = []
             # self.depends_member = depsYaml['depends-member'] || []
 
             if !self.provides.nil? &&
@@ -28,10 +29,6 @@ module SwiftDeadCode
                     end
                 end
             end
-        end
-
-        def contains?(dep) 
-            self.provides.contains? dep
         end
 
     def valid_dep?(dep)
@@ -64,11 +61,22 @@ module SwiftDeadCode
         
         def self.run(directory, deps)
             
+            full_path = "#{directory}/**/*.swift"
+            paths = Dir.glob(full_path)
             deps.each do |d|
-                puts "Looking for: #{d.fileName} in #{directory}"
-                path = Dir.glob("#{directory}/**/*.swift}")
-                puts "#{path}" if !path.empty?
+                paths.each do |p|
+                    d.filePath = p if p.include? d.fileName
+                end
             end
+
+            deps.each do |d0|
+                deps.each do |d1|
+                    d0.params << d1.filePath if d0.files.include? d1.fileName
+                end
+                val = `swiftc #{d0.filePath} #{d0.params.join(" ")}`
+                puts "swiftc #{d0.filePath} #{d0.params.join(" ")}"
+            end
+
         end
     end
 
@@ -88,14 +96,17 @@ module SwiftDeadCode
             derived_data_path = build_settings.match(/ OBJROOT = (.+)/)[1]
             project_name = build_settings.match(/ PROJECT_NAME = (.+)/)[1]
             target_name = build_settings.match(/ TARGET_NAME = (.+)/)[1]
-
-            "#{derived_data_path}/#{project_name}.build/**/#{target_name}*.build"
+            nativ_arch_actual = build_settings.match(/ NATIVE_ARCH_ACTUAL = (.+)/)[1]
+            
+            arch = nativ_arch_actual
+            
+            "#{derived_data_path}/#{project_name}.build/**/#{target_name}*.build/**/#{arch}/*.swiftdeps"
 
         end
 
         def self.findFiles(project, workspace, scheme)
             derived_data_path = findDeriveDataPath(project, workspace, scheme)
-            swiftdeps = Dir.glob("#{derived_data_path}/**/*.swiftdeps") if derived_data_path
+            swiftdeps = Dir.glob(derived_data_path) if derived_data_path
 
             if swiftdeps.nil? || swiftdeps.empty?
                 raise StandardError, 'No derived data found. Please make sure the project was built.'
@@ -113,10 +124,12 @@ module SwiftDeadCode
 
         depsFiles = XcodeBuilder::findFiles(project,workspace,scheme)
         deps = []
+        
         depsFiles.each do |file|
             parsed = SwiftDepsParser::parse(file)
+            
             swiftFile = Pathname(file).basename.to_s.gsub 'swiftdeps','swift'
-            deps << SwiftDepsModel.new(parsed, swiftFile) if !parsed.nil?
+            deps << SwiftDepsModel.new(parsed, swiftFile) if !parsed.nil? && !parsed['provides-top-level'].nil?#TODO: replace that check somwhere else
         end
 
         #TODO: there is a way to do this better i think
@@ -126,10 +139,22 @@ module SwiftDeadCode
             end
         end
 
-        SwifComplier::run(Pathname(project).dirname.to_s,deps)
+        directory = Pathname.new(workspace).dirname.to_s
+        SwifComplier::run(directory,deps)
+
+        # deps.each do |d|
+        #     puts "file: #{d.fileName}"
+        #     d.files.each {|x| puts x}
+        #     puts d.files.size
+        # end
         
     end
 
 end
+
 #TODO: for now it will be as a script cause of development purposes
-SwiftDeadCode::run(ARGV[0],ARGV[1],ARGV[2])
+project = ARGV[0] if ARGV[0].to_s.include?("xcodeproj")
+workspace = ARGV[0] if ARGV[0].to_s.include?("xcworkspace")
+scheme = ARGV[1] if !workspace.nil?
+
+SwiftDeadCode::run(project,workspace,scheme)
